@@ -16,8 +16,7 @@
  */
 package org.jboss.arquillian.spock.container;
 
-import java.lang.reflect.Method;
-
+import org.jboss.arquillian.spock.ArquillianSputnik;
 import org.junit.runner.Description;
 import org.junit.runner.manipulation.Filter;
 import org.spockframework.runtime.Sputnik;
@@ -25,60 +24,62 @@ import org.spockframework.runtime.model.FeatureInfo;
 import org.spockframework.runtime.model.MethodInfo;
 import org.spockframework.runtime.model.SpecInfo;
 
+import java.lang.reflect.Method;
+
 /**
- * JUnit filter for Spock spefications.
+ * JUnit filter for Spock specifications.
  *
  * @author <a href="mailto:bartosz.majsak@gmail.com">Bartosz Majsak</a>
  * @version $Revision: $
  */
 final class SpockSpecificationFilter extends Filter {
-    private static final MethodInfo NOT_FOUND = new MethodInfo();
+	private static final MethodInfo NOT_FOUND = new MethodInfo();
 
-    private final Sputnik spockRunner;
+	private final Sputnik spockRunner;
 
-    private final String methodName;
+	private final String methodName;
 
-    private SpecInfo currentSpec;
+	private final SpecInfo currentSpec;
 
-    SpockSpecificationFilter(Sputnik spockRunner, String methodName) {
-        this.spockRunner = spockRunner;
-        this.methodName = methodName;
-        obtainCurrentSpecification();
-    }
+	SpockSpecificationFilter(Sputnik spockRunner, String methodName) {
+		this.spockRunner = spockRunner;
+		this.methodName = methodName;
+		this.currentSpec = obtainCurrentSpecification();
+	}
 
-    @Override
-    public boolean shouldRun(Description description) {
-        final MethodInfo featureMethod = findCorrespondingFeatureMethod(description.getMethodName());
-        if (NOT_FOUND.equals(featureMethod)) {
-            return false;
-        }
-        return methodName.equals(featureMethod.getReflection().getName());
-    }
+	@Override
+	public boolean shouldRun(final Description description) {
+		final MethodInfo featureMethod = findCorrespondingFeatureMethod(description.getMethodName());
+		if (NOT_FOUND.equals(featureMethod)) {
+			return false;
+		}
+		return methodName.equals(featureMethod.getReflection().getName());
+	}
 
-    @Override
-    public String describe() {
-        return "Filter Feature methods for Spock Framework";
-    }
+	@Override
+	public String describe() {
+		return "Filter Feature methods for Spock Framework";
+	}
 
-    private void obtainCurrentSpecification() {
-        try {
-            Method method = Sputnik.class.getDeclaredMethod("getSpec");
-            method.setAccessible(true);
-            currentSpec = (SpecInfo) method.invoke(spockRunner);
-        } catch (Exception e) {
-            throw new RuntimeException("Could not obtain SpecInfo from Sputnik Runner", e);
-        }
-    }
+	private SpecInfo obtainCurrentSpecification() {
+		try {
+			final Method method = ArquillianSputnik.class.getDeclaredMethod("getSpec");
+			method.setAccessible(true);
+			return (SpecInfo) method.invoke(spockRunner);
+		} catch (Exception e) {
+			throw new RuntimeException("Could not obtain SpecInfo from Sputnik Runner", e);
+		}
+	}
 
-    private MethodInfo findCorrespondingFeatureMethod(String featureMethodName) {
-        MethodInfo methodInfo = NOT_FOUND;
-        for (FeatureInfo feature : currentSpec.getAllFeatures()) {
-            MethodInfo featureMethod = feature.getFeatureMethod();
-            if (featureMethodName.equals(featureMethod.getName())) {
-                methodInfo = featureMethod;
-                break;
-            }
-        }
-        return methodInfo;
-    }
+	private MethodInfo findCorrespondingFeatureMethod(final String featureMethodName) {
+		MethodInfo methodInfo = NOT_FOUND;
+		for (FeatureInfo feature : currentSpec.getAllFeatures()) {
+			final MethodInfo featureMethod = feature.getFeatureMethod();
+			if (featureMethodName.equals(featureMethod.getName())) {
+				methodInfo = featureMethod;
+				break;
+			}
+		}
+		return methodInfo;
+	}
 }

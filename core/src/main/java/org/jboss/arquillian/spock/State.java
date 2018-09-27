@@ -26,95 +26,139 @@ import org.jboss.arquillian.test.spi.TestRunnerAdaptor;
  * @version $Revision: $
  */
 public class State {
-    /*
-     * @HACK JUnit Hack: In JUnit a Exception is thrown and verified/swallowed if @Test(expected) is set. We need to transfer
-     * this Exception back to the client so the client side can throw it again. This to avoid a incontainer working but failing
-     * on client side due to no Exception thrown.
-     */
-    // Cleaned up in JUnitTestRunner
-    private static ThreadLocal<Throwable> caughtTestException = new InheritableThreadLocal<Throwable>();
+	/*
+	 * @HACK JUnit Hack: In JUnit a Exception is thrown and verified/swallowed
+	 * if @Test(expected) is set. We need to transfer this Exception back to the
+	 * client so the client side can throw it again. This to avoid a incontainer
+	 * working but failing on client side due to no Exception thrown.
+	 */
+	// Cleaned up in JUnitTestRunner
+	private static ThreadLocal<Throwable> caughtTestException = new ThreadLocal<Throwable>();
 
-    /*
-     * Keep track of previous BeforeSuite initialization exceptions
-     */
-    private static ThreadLocal<Throwable> caughtInitializationException = new InheritableThreadLocal<Throwable>();
+	private static ThreadLocal<Throwable> caughtExceptionAfterJunit = new ThreadLocal<Throwable>();
 
-    /*
-     * @HACK Eclipse hack: When running multiple TestCases, Eclipse will create a new runner for each of them. This results in
-     * that AfterSuite is call per TestCase, but BeforeSuite only on the first created instance. A instance of all TestCases are
-     * created before the first one is started, so we keep track of which one was the last one created. The last one created is
-     * the only one allowed to call AfterSuite.
-     */
-    private static ThreadLocal<Integer> lastCreatedRunner = new InheritableThreadLocal<Integer>() {
-        @Override
-        protected Integer initialValue() {
-            return new Integer(0);
-        }
-    };
+	/*
+	 * Keep track of previous BeforeSuite initialization exceptions
+	 */
+	private static ThreadLocal<Throwable> caughtInitializationException = new ThreadLocal<Throwable>();
 
-    private static ThreadLocal<TestRunnerAdaptor> deployableTest = new InheritableThreadLocal<TestRunnerAdaptor>();
+	/*
+	 * @HACK Eclipse hack: When running multiple TestCases, Eclipse will create a
+	 * new runner for each of them. This results in that AfterSuite is call pr
+	 * TestCase, but BeforeSuite only on the first created instance. A instance of
+	 * all TestCases are created before the first one is started, so we keep track
+	 * of which one was the last one created. The last one created is the only one
+	 * allowed to call AfterSuite.
+	 */
+	private static ThreadLocal<Integer> lastCreatedRunner = new ThreadLocal<Integer>() {
+		@Override
+		protected Integer initialValue() {
+			return new Integer(0);
+		}
+	};
 
-    static void runnerStarted() {
-        lastCreatedRunner.set(lastCreatedRunner.get() + 1);
-    }
+	/*
+	 * @HACK Eclipse hack: See above. We need to track constructor invocations when
+	 * running in Eclipse, but run() invocations in Surefire due to how groups are
+	 * handled in Surefire.
+	 */
+	private static boolean runningInEclipse = false;
 
-    static Integer runnerFinished() {
-        Integer currentCount = lastCreatedRunner.get() - 1;
-        lastCreatedRunner.set(currentCount);
-        return currentCount;
-    }
+	static {
+		try {
+			ArquillianSputnik.class.getClassLoader()
+					.loadClass("org.eclipse.jdt.internal.junit.runner.RemoteTestRunner");
+			runningInEclipse = true;
+		} catch (Exception e) {
+			runningInEclipse = false;
+		}
+	}
 
-    static Integer runnerCurrent() {
-        return lastCreatedRunner.get();
-    }
+	public static boolean isRunningInEclipse() {
+		return runningInEclipse;
+	}
 
-    static boolean isLastRunner() {
-        return runnerCurrent() == 0;
-    }
+	public static boolean isNotRunningInEclipse() {
+		return !runningInEclipse;
+	}
 
-    static void testAdaptor(TestRunnerAdaptor adaptor) {
-        deployableTest.set(adaptor);
-    }
+	private static ThreadLocal<TestRunnerAdaptor> deployableTest = new ThreadLocal<TestRunnerAdaptor>();
 
-    static boolean hasTestAdaptor() {
-        return getTestAdaptor() != null;
-    }
+	static void runnerStarted() {
+		lastCreatedRunner.set(lastCreatedRunner.get() + 1);
+	}
 
-    static TestRunnerAdaptor getTestAdaptor() {
-        return deployableTest.get();
-    }
+	static Integer runnerFinished() {
+		Integer currentCount = lastCreatedRunner.get() - 1;
+		lastCreatedRunner.set(currentCount);
+		return currentCount;
+	}
 
-    static void caughtInitializationException(Throwable throwable) {
-        caughtInitializationException.set(throwable);
-    }
+	static Integer runnerCurrent() {
+		return lastCreatedRunner.get();
+	}
 
-    static boolean hasInitializationException() {
-        return getInitializationException() != null;
-    }
+	static boolean isLastRunner() {
+		return runnerCurrent() == 0;
+	}
 
-    static Throwable getInitializationException() {
-        return caughtInitializationException.get();
-    }
+	static void testAdaptor(TestRunnerAdaptor adaptor) {
+		deployableTest.set(adaptor);
+	}
 
-    public static void caughtTestException(Throwable throwable) {
-        if (throwable == null) {
-            caughtTestException.remove();
-        } else {
-            caughtTestException.set(throwable);
-        }
-    }
+	static boolean hasTestAdaptor() {
+		return getTestAdaptor() != null;
+	}
 
-    public static boolean hasTestException() {
-        return getTestException() != null;
-    }
+	static TestRunnerAdaptor getTestAdaptor() {
+		return deployableTest.get();
+	}
 
-    public static Throwable getTestException() {
-        return caughtTestException.get();
-    }
+	static void caughtInitializationException(Throwable throwable) {
+		caughtInitializationException.set(throwable);
+	}
 
-    static void clean() {
-        lastCreatedRunner.remove();
-        deployableTest.remove();
-        caughtInitializationException.remove();
-    }
+	static boolean hasInitializationException() {
+		return getInitializationException() != null;
+	}
+
+	static Throwable getInitializationException() {
+		return caughtInitializationException.get();
+	}
+
+	public static void caughtTestException(Throwable throwable) {
+		if (throwable == null) {
+			caughtTestException.remove();
+		} else {
+			caughtTestException.set(throwable);
+		}
+	}
+
+	public static boolean hasTestException() {
+		return getTestException() != null;
+	}
+
+	public static Throwable getTestException() {
+		return caughtTestException.get();
+	}
+
+	public static Throwable caughtExceptionAfterJunit() {
+		return caughtExceptionAfterJunit.get();
+	}
+
+	public static void caughtExceptionAfterJunit(Throwable afterException) {
+		if (afterException == null) {
+			caughtExceptionAfterJunit.remove();
+		} else {
+			caughtExceptionAfterJunit.set(afterException);
+		}
+	}
+
+	static void clean() {
+		lastCreatedRunner.remove();
+		deployableTest.remove();
+		caughtInitializationException.remove();
+		caughtExceptionAfterJunit.remove();
+	}
+
 }

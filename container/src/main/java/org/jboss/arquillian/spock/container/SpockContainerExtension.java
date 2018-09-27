@@ -27,8 +27,8 @@ import org.jboss.arquillian.core.spi.LoadableExtension;
  */
 public class SpockContainerExtension implements LoadableExtension {
 
-    @Override
-    public void register(ExtensionBuilder builder) {
-        builder.service(AuxiliaryArchiveAppender.class, SpockDeploymentAppender.class);
-    }
+	@Override
+	public void register(ExtensionBuilder builder) {
+		builder.service(AuxiliaryArchiveAppender.class, SpockDeploymentAppender.class);
+	}
 }

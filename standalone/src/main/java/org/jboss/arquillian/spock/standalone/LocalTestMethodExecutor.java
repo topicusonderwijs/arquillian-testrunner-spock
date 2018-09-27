@@ -16,9 +16,6 @@
  */
 package org.jboss.arquillian.spock.standalone;
 
-import java.lang.reflect.Method;
-import java.util.Collection;
-
 import org.jboss.arquillian.core.api.Instance;
 import org.jboss.arquillian.core.api.InstanceProducer;
 import org.jboss.arquillian.core.api.annotation.Inject;
@@ -29,6 +26,9 @@ import org.jboss.arquillian.test.spi.TestResult;
 import org.jboss.arquillian.test.spi.annotation.TestScoped;
 import org.jboss.arquillian.test.spi.event.suite.Test;
 
+import java.lang.reflect.Method;
+import java.util.Collection;
+
 /**
  * SpockTestRunner
  *
@@ -36,60 +36,60 @@ import org.jboss.arquillian.test.spi.event.suite.Test;
  * @version $Revision: $
  */
 public class LocalTestMethodExecutor {
-    @Inject
-    private Instance<ServiceLoader> serviceLoader;
 
-    @Inject @TestScoped
-    private InstanceProducer<TestResult> testResult;
+	@Inject
+	private Instance<ServiceLoader> serviceLoader;
 
-    public void execute(@Observes Test event) throws Exception {
-        TestResult result = TestResult.passed();
-        try {
-            event.getTestMethodExecutor().invoke(
-                enrichArguments(
-                    event.getTestMethod(),
-                    serviceLoader.get().all(TestEnricher.class)));
-        } catch (Throwable e) {
-            result = TestResult.failed(e);
-        } finally {
-            result.setEnd(System.currentTimeMillis());
-        }
-        testResult.set(result);
-    }
+	@Inject
+	@TestScoped
+	private InstanceProducer<TestResult> testResult;
 
-    /**
-     * Enrich the method arguments of a method call.<br/>
-     * The Object[] index will match the method parameterType[] index.
-     *
-     * @param method method to enrich arguments
-     * @return the argument values
-     */
-    private Object[] enrichArguments(Method method, Collection<TestEnricher> enrichers) {
-        Object[] values = new Object[method.getParameterTypes().length];
-        if (method.getParameterTypes().length == 0) {
-            return values;
-        }
-        for (TestEnricher enricher : enrichers) {
-            mergeValues(values, enricher.resolve(method));
-        }
-        return values;
-    }
+	public void execute(@Observes Test event) throws Exception {
+		TestResult result;
+		try {
+			event.getTestMethodExecutor()
+					.invoke(enrichArguments(event.getTestMethod(), serviceLoader.get().all(TestEnricher.class)));
+			result = TestResult.passed();
+		} catch (Throwable e) {
+			result = TestResult.failed(e);
+		}
+		result.setEnd(System.currentTimeMillis());
+		testResult.set(result);
+	}
 
-    private void mergeValues(Object[] values, Object[] resolvedValues) {
-        if (resolvedValues == null || resolvedValues.length == 0) {
-            return;
-        }
+	/**
+	 * Enrich the method arguments of a method call.<br/>
+	 * The Object[] index will match the method parameterType[] index.
+	 *
+	 * @param method
+	 * @return the argument values
+	 */
+	private Object[] enrichArguments(Method method, Collection<TestEnricher> enrichers) {
+		final Object[] values = new Object[method.getParameterTypes().length];
+		if (method.getParameterTypes().length == 0) {
+			return values;
+		}
+		for (TestEnricher enricher : enrichers) {
+			mergeValues(values, enricher.resolve(method));
+		}
+		return values;
+	}
 
-        if (values.length != resolvedValues.length) {
-            throw new IllegalStateException("TestEnricher resolved wrong argument count, expected " +
-                values.length + " returned " + resolvedValues.length);
-        }
+	private void mergeValues(Object[] values, Object[] resolvedValues) {
+		if (resolvedValues == null || resolvedValues.length == 0) {
+			return;
+		}
 
-        for (int i = 0; i < resolvedValues.length; i++) {
-            Object resvoledValue = resolvedValues[i];
-            if (resvoledValue != null && values[i] == null) {
-                values[i] = resvoledValue;
-            }
-        }
-    }
+		if (values.length != resolvedValues.length) {
+			throw new IllegalStateException("TestEnricher resolved wrong argument count, expected " + values.length
+					+ " returned " + resolvedValues.length);
+		}
+
+		for (int i = 0; i < resolvedValues.length; i++) {
+			Object resolvedValue = resolvedValues[i];
+			if (resolvedValue != null && values[i] == null) {
+				values[i] = resolvedValue;
+			}
+		}
+	}
 }

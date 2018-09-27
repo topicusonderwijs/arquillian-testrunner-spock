@@ -16,9 +16,6 @@
  */
 package org.jboss.arquillian.spock;
 
-import java.lang.reflect.Method;
-import java.util.logging.Logger;
-
 import org.jboss.arquillian.test.spi.LifecycleMethodExecutor;
 import org.jboss.arquillian.test.spi.TestMethodExecutor;
 import org.jboss.arquillian.test.spi.TestResult;
@@ -26,111 +23,107 @@ import org.jboss.arquillian.test.spi.TestRunnerAdaptor;
 import org.spockframework.runtime.extension.AbstractMethodInterceptor;
 import org.spockframework.runtime.extension.IMethodInvocation;
 
+import java.lang.reflect.Method;
+
 /**
  * Interceptor to call the Arquillian Core
  *
  * @author <a href="mailto:aslak@redhat.com">Aslak Knutsen</a>
+ * @author <a href="mailto:bartosz.majsak@ggmail.com">Bartosz Majsak</a>
  * @version $Revision: $
  */
 public class ArquillianInterceptor extends AbstractMethodInterceptor {
-    private final Logger log = Logger.getLogger(ArquillianInterceptor.class.getName());
+	private TestRunnerAdaptor testRunner;
 
-    private TestRunnerAdaptor testRunner;
+	@Override
+	public void interceptSetupSpecMethod(IMethodInvocation invocation) throws Throwable {
+		final Class<?> specClass = invocation.getSpec().getReflection();
+		getTestRunner().beforeClass(specClass, new InvocationExecutor(invocation));
+	}
 
-    public ArquillianInterceptor() {
-    }
+	@Override
+	public void interceptCleanupSpecMethod(IMethodInvocation invocation) throws Throwable {
+		final Class<?> specClass = invocation.getSpec().getReflection();
+		getTestRunner().afterClass(specClass, new InvocationExecutor(invocation));
+	}
 
-    /* (non-Javadoc)
-     * @see org.spockframework.runtime.extension.AbstractMethodInterceptor#interceptSetupSpecMethod(org.spockframework.runtime.extension.IMethodInvocation)
-     */
-    @Override
-    public void interceptSetupSpecMethod(IMethodInvocation invocation) throws Throwable {
-        Class<?> specClass = invocation.getSpec().getReflection();
-        log.fine("beforeClass " + specClass.getName());
-        getTestRunner().beforeClass(specClass, new InvocationExecutor(invocation));
-    }
+	@Override
+	public void interceptSetupMethod(IMethodInvocation invocation) throws Throwable {
+		getTestRunner().before(invocation.getTarget(), invocation.getMethod().getReflection(),
+				new InvocationExecutor(invocation));
+	}
 
-    /* (non-Javadoc)
-     * @see org.spockframework.runtime.extension.AbstractMethodInterceptor#interceptCleanupSpecMethod(org.spockframework.runtime.extension.IMethodInvocation)
-     */
-    @Override
-    public void interceptCleanupSpecMethod(IMethodInvocation invocation) throws Throwable {
-        Class<?> specClass = invocation.getSpec().getReflection();
-        log.fine("afterClass " + specClass.getName());
-        getTestRunner().afterClass(specClass, new InvocationExecutor(invocation));
-    }
+	@Override
+	public void interceptCleanupMethod(IMethodInvocation invocation) throws Throwable {
+		getTestRunner().after(invocation.getTarget(), invocation.getMethod().getReflection(),
+				new InvocationExecutor(invocation));
+	}
 
-    /* (non-Javadoc)
-     * @see org.spockframework.runtime.extension.AbstractMethodInterceptor#interceptSetupMethod(org.spockframework.runtime.extension.IMethodInvocation)
-     */
-    @Override
-    public void interceptSetupMethod(IMethodInvocation invocation) throws Throwable {
-        log.fine("before " + invocation.getFeature().getFeatureMethod().getReflection().getName());
-        getTestRunner().before(invocation.getTarget(), invocation.getFeature().getFeatureMethod().getReflection(),
-            new InvocationExecutor(invocation));
-    }
+	@Override
+	public void interceptFeatureMethod(final IMethodInvocation invocation) throws Throwable {
+		final Method featureMethod = invocation.getFeature().getFeatureMethod().getReflection();
+		final Object invocationTarget = invocation.getTarget();
 
-    /* (non-Javadoc)
-     * @see org.spockframework.runtime.extension.AbstractMethodInterceptor#interceptCleanupMethod(org.spockframework.runtime.extension.IMethodInvocation)
-     */
-    @Override
-    public void interceptCleanupMethod(IMethodInvocation invocation) throws Throwable {
-        log.fine("after " + invocation.getFeature().getFeatureMethod().getReflection().getName());
-        getTestRunner().after(invocation.getTarget(), invocation.getFeature().getFeatureMethod().getReflection(),
-            new InvocationExecutor(invocation));
-    }
+		if (invocation.getSpec().getSetupMethods().isEmpty()) {
+			getTestRunner().before(invocationTarget, featureMethod, new NoopInvocationExecutor());
+		}
 
-    /* (non-Javadoc)
-     * @see org.spockframework.runtime.extension.AbstractMethodInterceptor#interceptFeatureMethod(org.spockframework.runtime.extension.IMethodInvocation)
-     */
-    @Override
-    public void interceptFeatureMethod(final IMethodInvocation invocation) throws Throwable {
-        TestResult result = getTestRunner().test(new TestMethodExecutor() {
-            @Override
-            public Method getMethod() {
-                return invocation.getFeature().getFeatureMethod().getReflection();
-            }
+		final TestResult result = getTestRunner().test(new TestMethodExecutor() {
+			@Override
+			public Method getMethod() {
+				return featureMethod;
+			}
 
-            @Override
-            public Object getInstance() {
-                return invocation.getTarget();
-            }
+			@Override
+			public Object getInstance() {
+				return invocationTarget;
+			}
 
-            @Override
-            public void invoke(Object... parameters) throws Throwable {
-                invocation.proceed();
-            }
-        });
+			@Override
+			public void invoke(Object... parameters) throws Throwable {
+				invocation.proceed();
+			}
+		});
 
-        if (result.getThrowable() != null) {
-            throw result.getThrowable();
-        }
-    }
+		if (invocation.getSpec().getCleanupMethods().isEmpty()) {
+			getTestRunner().after(invocationTarget, featureMethod, new NoopInvocationExecutor());
+		}
 
-    private static class InvocationExecutor implements LifecycleMethodExecutor {
+		if (result.getThrowable() != null) {
+			throw result.getThrowable();
+		}
+	}
 
-        private IMethodInvocation invocation;
+	private static class NoopInvocationExecutor implements LifecycleMethodExecutor {
+		@Override
+		public void invoke() throws Throwable {
+		}
+	}
 
-        public InvocationExecutor(IMethodInvocation invocation) {
-            this.invocation = invocation;
-        }
+	private static class InvocationExecutor implements LifecycleMethodExecutor {
 
-        @Override
-        public void invoke() throws Throwable {
-            invocation.proceed();
-        }
-    }
+		private IMethodInvocation invocation;
 
-    private TestRunnerAdaptor getTestRunner() {
-        if (this.testRunner == null) {
-            this.testRunner = State.getTestAdaptor();
-        }
+		public InvocationExecutor(IMethodInvocation invocation) {
+			this.invocation = invocation;
+		}
 
-        if (this.testRunner == null) {
-            throw new IllegalStateException(
-                "Unable to run Arquillian Spock test without TestRunnerAdaptor instantiated. Likely you forgot to annotate the specification with @RunWith(ArquillianSputnik)");
-        }
+		@Override
+		public void invoke() throws Throwable {
+			invocation.proceed();
+		}
+	}
 
-        return testRunner;
-    }
+	private TestRunnerAdaptor getTestRunner() {
+		if (this.testRunner == null) {
+			this.testRunner = State.getTestAdaptor();
+		}
+
+		if (this.testRunner == null) {
+			throw new IllegalStateException(
+					"Unable to run Arquillian Spock test without TestRunnerAdaptor instantiated. Likely you forgot to annotate the specification with @RunWith(ArquillianSputnik)");
+		}
+
+		return testRunner;
+	}
 }

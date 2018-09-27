@@ -28,39 +28,42 @@ import org.jboss.shrinkwrap.api.spec.JavaArchive;
 import javax.script.ScriptEngineFactory;
 
 /**
- * Creates testing archive with dependencies required
- * to run Spock Framework tests with Arquillian.
+ * Creates testing archive with dependencies required to run Spock Framework
+ * tests with Arquillian.
  *
  * @author <a href="mailto:aslak@redhat.com">Aslak Knutsen</a>
  * @author <a href="mailto:bartosz.majsak@gmail.com">Bartosz Majsak</a>
  */
 public class SpockDeploymentAppender implements AuxiliaryArchiveAppender {
-    /* (non-Javadoc)
-     * @see org.jboss.arquillian.spi.AuxiliaryArchiveAppender#createAuxiliaryArchive()
-     */
-    public Archive<?> createAuxiliaryArchive() {
-        return ShrinkWrap.create(JavaArchive.class, "arquillian-spock.jar")
-            .addPackages(
-                true,
-                Filters.exclude(".*/package-info.*"),
-                "groovy",
-                "groovyjarjarantlr",
-                "groovyjarjarasm.asm",
-                "groovyjarjarcommonscli",
-                "org.codehaus.groovy",
-                "spock",
-                "org.spockframework",
-                "org.objectweb.asm")
-            .addPackages( // junit
-                true,
-                Filters.includeAll(),
-                "org.junit",
-                "org.hamcrest")
-            .addPackages(true, ArquillianSputnik.class.getPackage())
-            .addAsServiceProvider(TestRunner.class, SpockTestRunner.class)
-            .addAsServiceProvider(ScriptEngineFactory.class, GroovyScriptEngineFactory.class)
-            .addClass(SpockSpecificationFilter.class)
-            .addAsManifestResource("META-INF/dgminfo", "dgminfo")
-            .addAsManifestResource("META-INF/groovy-release-info.properties", "groovy-release-info.properties");
-    }
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see
+	 * org.jboss.arquillian.spi.AuxiliaryArchiveAppender#createAuxiliaryArchive()
+	 */
+	public Archive<?> createAuxiliaryArchive() {
+		return ShrinkWrap.create(JavaArchive.class, "arquillian-spock.jar").addPackages( // groovy and spock
+				true, //
+				Filters.exclude(".*/package-info.*"), //
+				"groovy", //
+				"groovyjarjarantlr", //
+				"groovyjarjarasm.asm", //
+				"groovyjarjarcommonscli", //
+				"org.codehaus.groovy", //
+				"org.apache.groovy", //
+				"spock", //
+				"org.spockframework", //
+				"org.objectweb.asm") //
+				.addAsResource("org/spockframework/util/SpockReleaseInfo.properties").addPackages( // junit
+						true, //
+						Filters.includeAll(), //
+						"org.junit", //
+						"org.hamcrest") //
+				.addPackages(true, ArquillianSputnik.class.getPackage()) //
+				.addAsServiceProvider(TestRunner.class, SpockTestRunner.class) //
+				.addAsServiceProvider(ScriptEngineFactory.class, GroovyScriptEngineFactory.class) //
+				.addClass(SpockSpecificationFilter.class) //
+				.addAsManifestResource("META-INF/dgminfo", "dgminfo") //
+				.addAsManifestResource("META-INF/groovy-release-info.properties", "groovy-release-info.properties");
+	}
 }

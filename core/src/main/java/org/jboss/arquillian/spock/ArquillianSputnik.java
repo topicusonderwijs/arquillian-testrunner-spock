@@ -21,8 +21,6 @@
 
 package org.jboss.arquillian.spock;
 
-import java.util.Collection;
-
 import org.jboss.arquillian.test.spi.TestRunnerAdaptor;
 import org.jboss.arquillian.test.spi.TestRunnerAdaptorBuilder;
 import org.junit.runner.Description;
@@ -41,158 +39,198 @@ import org.spockframework.runtime.RunContext;
 import org.spockframework.runtime.SpecInfoBuilder;
 import org.spockframework.runtime.Sputnik;
 import org.spockframework.runtime.model.FeatureInfo;
+import org.spockframework.runtime.model.MethodInfo;
 import org.spockframework.runtime.model.SpecInfo;
 
+import java.util.Collection;
+
 /**
- * @author <a href="mailto:kpiwko@redhat.com">Karel Piwko</a>
  * @author Peter Niederwieser
+ * @author <a href="mailto:kpiwko@redhat.com">Karel Piwko</a>
+ * @author <a href="mailto:bartosz.majsak@gmail.com">Bartosz Majsak</a>
  *         <p>
- *         Extension to Sputnik class that allows to mimic Before and After Suite events.
- *         The original runner is copied as we need access to getSpec() method, which is private in original Sputnik
- *         class
+ *         Extension to Sputnik class that allows to mimic Before and After
+ *         Suite events. The original runner is copied as we need access to
+ *         getSpec() method, which is private in original Sputnik class
  */
 public class ArquillianSputnik extends Sputnik {
 
-    private final Class<?> clazz;
+	private final Class<?> clazz;
 
-    private SpecInfo spec;
+	private SpecInfo spec;
 
-    private boolean extensionsRun = false;
+	private boolean extensionsRun = false;
 
-    private boolean descriptionAggregated = false;
+	private boolean descriptionGenerated = false;
 
-    public ArquillianSputnik(Class<?> clazz) throws InitializationError {
-        super(clazz);
-        // clazz is private field, we're actually shading it
-        this.clazz = clazz;
-        State.runnerStarted();
-    }
+	private final boolean controlledByArquillian;
 
-    @Override
-    public void run(RunNotifier notifier) {
-        // first time we're being initialized
-        if (!State.hasTestAdaptor()) {
-            // no, initialization has been attempted before and failed, refuse to do anything else
-            if (State.hasInitializationException()) {
-                // failed on suite level, ignore children
-                // notifier.fireTestIgnored(getDescription());
-                notifier.fireTestFailure(new Failure(getDescription(), new RuntimeException(
-                    "Arquillian has previously been attempted initialized, but failed. See cause for previous exception",
-                    State.getInitializationException())));
-            } else {
-                final TestRunnerAdaptor adaptor = TestRunnerAdaptorBuilder.build();
-                try {
-                    // don't set it if beforeSuite fails
-                    adaptor.beforeSuite();
-                    State.testAdaptor(adaptor);
-                } catch (Exception e) {
-                    // caught exception during BeforeSuite, mark this as failed
-                    State.caughtInitializationException(e);
-                    notifier.fireTestFailure(new Failure(getDescription(), e));
-                }
-            }
-        }
+	public ArquillianSputnik(Class<?> clazz) throws InitializationError {
+		this(clazz, false);
+	}
 
-        notifier.addListener(new RunListener() {
-            @Override
-            public void testRunFinished(Result result) throws Exception {
-                State.runnerFinished();
-                shutdown();
-            }
+	public ArquillianSputnik(Class<?> clazz, boolean controlledByArquillian) throws InitializationError {
+		super(clazz);
+		// clazz is private field, we're actually shading it
+		this.clazz = clazz;
+		State.runnerStarted();
+		this.controlledByArquillian = controlledByArquillian;
+	}
 
-            private void shutdown() {
-                try {
-                    if (State.isLastRunner()) {
-                        try {
-                            if (State.hasTestAdaptor()) {
-                                TestRunnerAdaptor adaptor = State.getTestAdaptor();
-                                adaptor.afterSuite();
-                                adaptor.shutdown();
-                            }
-                        } finally {
-                            State.clean();
-                        }
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException("Could not run @AfterSuite", e);
-                }
-            }
-        });
+	@Override
+	public void run(RunNotifier notifier) {
+		// first time we're being initialized
+		if (!State.hasTestAdaptor()) {
+			// no, initialization has been attempted before and failed, refuse to do
+			// anything else
+			if (State.hasInitializationException()) {
+				// failed on suite level, ignore children
+				// notifier.fireTestIgnored(getDescription());
+				notifier.fireTestFailure(new Failure(getDescription(), new RuntimeException(
+						"Arquillian has previously been attempted initialized, but failed. See cause for previous exception",
+						State.getInitializationException())));
+			} else {
+				final TestRunnerAdaptor adaptor = TestRunnerAdaptorBuilder.build();
+				try {
+					// don't set it if beforeSuite fails
+					adaptor.beforeSuite();
+					State.testAdaptor(adaptor);
+				} catch (Exception e) {
+					// caught exception during BeforeSuite, mark this as failed
+					State.caughtInitializationException(e);
+					notifier.fireTestFailure(new Failure(getDescription(), e));
+				}
+			}
+		}
 
-        // initialization ok, run children
-        if (State.hasTestAdaptor()) {
-            runExtensionsIfNecessary();
-            aggregateDescriptionIfNecessary();
-            RunContext.get().createSpecRunner(getSpec(), notifier).run();
-        }
-    }
+		notifier.addListener(new RunListener() {
+			@Override
+			public void testRunFinished(Result result) throws Exception {
+				State.runnerFinished();
+				shutdown();
+			}
 
-    @Override
-    public Description getDescription() {
-        runExtensionsIfNecessary();
-        aggregateDescriptionIfNecessary();
-        return getSpec().getDescription();
-    }
+			private void shutdown() {
+				try {
+					if (State.isLastRunner()) {
+						try {
+							if (State.hasTestAdaptor()) {
+								TestRunnerAdaptor adaptor = State.getTestAdaptor();
+								adaptor.afterSuite();
+								adaptor.shutdown();
+							}
+						} finally {
+							State.clean();
+						}
+					}
+				} catch (Exception e) {
+					throw new RuntimeException("Could not run @AfterSuite", e);
+				}
+			}
+		});
 
-    @Override
-    public void filter(Filter filter) throws NoTestsRemainException {
-        getSpec().filterFeatures(new JUnitFilterAdapter(filter));
-        if (allFeaturesExcluded()) {
-            throw new NoTestsRemainException();
-        }
-    }
+		// initialization ok, run children
+		if (State.hasTestAdaptor()) {
+			runExtensionsIfNecessary();
+			generateSpecDescriptionIfNecessary();
+			SpecInfo spec = getSpec();
+			RunContext.get().createSpecRunner(spec, notifier).run();
+		}
+	}
 
-    @Override
-    public void sort(Sorter sorter) {
-        getSpec().sortFeatures(new JUnitSorterAdapter(sorter));
-    }
+	@Override
+	public Description getDescription() {
+		runExtensionsIfNecessary();
+		generateSpecDescriptionIfNecessary();
+		return getSpec().getDescription();
+	}
 
-    private SpecInfo getSpec() {
-        if (spec == null) {
-            spec = new SpecInfoBuilder(clazz).build();
-            new JUnitDescriptionGenerator(spec).attach();
-            enrichSpecWithArquillian(spec);
-        }
-        return spec;
-    }
+	@Override
+	public void filter(Filter filter) throws NoTestsRemainException {
+		invalidateSpecDescription();
+		getSpec().filterFeatures(new JUnitFilterAdapter(filter));
+		if (allFeaturesExcluded()) {
+			throw new NoTestsRemainException();
+		}
+	}
 
-    private void runExtensionsIfNecessary() {
-        if (extensionsRun) return;
-        RunContext.get().createExtensionRunner(getSpec()).run();
-        extensionsRun = true;
-    }
+	@Override
+	public void sort(Sorter sorter) {
+		invalidateSpecDescription();
+		getSpec().sortFeatures(new JUnitSorterAdapter(sorter));
+	}
 
-    private void aggregateDescriptionIfNecessary() {
-        if (descriptionAggregated) return;
-        new JUnitDescriptionGenerator(getSpec()).aggregate();
-        descriptionAggregated = true;
-    }
+	private SpecInfo getSpec() {
+		if (spec == null) {
+			spec = new SpecInfoBuilder(clazz).build();
+			enrichSpecWithArquillian(spec);
+			new JUnitDescriptionGenerator(spec).describeSpecMethods();
+		}
+		return spec;
+	}
 
-    private boolean allFeaturesExcluded() {
-        for (FeatureInfo feature : getSpec().getAllFeatures())
-            if (!feature.isExcluded()) return false;
+	private void runExtensionsIfNecessary() {
+		if (extensionsRun) {
+			return;
+		}
+		RunContext.get().createExtensionRunner(getSpec()).run();
+		extensionsRun = true;
+	}
 
-        return true;
-    }
+	private void generateSpecDescriptionIfNecessary() {
+		if (descriptionGenerated) {
+			return;
+		}
+		new JUnitDescriptionGenerator(getSpec()).describeSpec();
+		descriptionGenerated = true;
+	}
 
-    private void enrichSpecWithArquillian(SpecInfo spec) {
-        final ArquillianInterceptor interceptor = new ArquillianInterceptor();
-        for (SpecInfo s : spec.getSpecsBottomToTop()) {
-            interceptLifecycleMethods(s, interceptor);
-            interceptAllFeatures(s.getAllFeatures(), interceptor);
-        }
-    }
+	private void invalidateSpecDescription() {
+		descriptionGenerated = false;
+	}
 
-    private void interceptLifecycleMethods(final SpecInfo specInfo, final ArquillianInterceptor interceptor) {
-        specInfo.getSetupSpecMethod().addInterceptor(interceptor);
-        specInfo.getSetupMethod().addInterceptor(interceptor);
-        specInfo.getCleanupMethod().addInterceptor(interceptor);
-        specInfo.getCleanupSpecMethod().addInterceptor(interceptor);
-    }
+	private boolean allFeaturesExcluded() {
+		for (FeatureInfo feature : getSpec().getAllFeatures()) {
+			if (!feature.isExcluded()) {
+				return false;
+			}
+		}
+		return true;
+	}
 
-    private void interceptAllFeatures(final Collection<FeatureInfo> features, final ArquillianInterceptor interceptor) {
-        for (FeatureInfo feature : features) {
-            feature.getFeatureMethod().addInterceptor(interceptor);
-        }
-    }
+	private void enrichSpecWithArquillian(final SpecInfo spec) {
+		final ArquillianInterceptor interceptor = new ArquillianInterceptor();
+		interceptLifecycleMethods(spec, interceptor);
+		interceptAllFeatures(spec.getAllFeaturesInExecutionOrder(), interceptor);
+	}
+
+	private void interceptLifecycleMethods(final SpecInfo specInfo, final ArquillianInterceptor interceptor) {
+		specInfo.addSetupSpecInterceptor(interceptor);
+		specInfo.addCleanupSpecInterceptor(interceptor);
+
+		for (final MethodInfo methodInfo : specInfo.getSetupMethods()) {
+			methodInfo.addInterceptor(interceptor);
+		}
+
+		for (final MethodInfo methodInfo : specInfo.getCleanupMethods()) {
+			methodInfo.addInterceptor(interceptor);
+		}
+	}
+
+	private void interceptAllFeatures(final Collection<FeatureInfo> features, final ArquillianInterceptor interceptor) {
+		for (final FeatureInfo feature : features) {
+			skipParametrizedRunOnClientSide(feature);
+			feature.getFeatureMethod().addInterceptor(interceptor);
+		}
+	}
+
+	private void skipParametrizedRunOnClientSide(FeatureInfo feature) {
+		if (feature.isParameterized() && !controlledByArquillian()) {
+			feature.setDataProcessorMethod(null); // FIXME #28 this way we loose @Unroll reporting
+		}
+	}
+
+	private boolean controlledByArquillian() {
+		return controlledByArquillian;
+	}
 }
