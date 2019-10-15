@@ -89,6 +89,7 @@
       <groupId>org.codehaus.groovy</groupId>
       <artifactId>groovy-all</artifactId>
       <scope>provided</scope>
+		  <type>pom</type>
     </dependency>
 
   </dependencies>
