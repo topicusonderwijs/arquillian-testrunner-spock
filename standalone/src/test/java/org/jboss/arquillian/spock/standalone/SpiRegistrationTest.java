@@ -16,12 +16,12 @@
  */
 package org.jboss.arquillian.spock.standalone;
 
-import static org.jboss.arquillian.spock.standalone.asserts.CustomAssertions.*;
-
-import org.jboss.arquillian.core.spi.LoadableExtension;
-import org.junit.Test;
+import static org.jboss.arquillian.spock.standalone.asserts.CustomAssertions.assertThat;
 
 import java.util.ServiceLoader;
+
+import org.jboss.arquillian.core.spi.LoadableExtension;
+import org.junit.jupiter.api.Test;
 
 public class SpiRegistrationTest {
     @Test

@@ -54,6 +54,7 @@
     <version.shrinkwrap>1.2.6</version.shrinkwrap>
     <version.groovy>3.0.8</version.groovy>
     <version.assertj>3.19.0</version.assertj>
+    <version.junit>5.7.2</version.junit>
 
     <!-- overwrite parent -->
     <version.compiler.plugin>3.8.1</version.compiler.plugin>
@@ -96,6 +97,13 @@
       </dependency>
 
       <!-- External Projects -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${version.junit}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>org.spockframework</groupId>
         <artifactId>spock-core</artifactId>
