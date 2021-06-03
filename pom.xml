@@ -5,7 +5,7 @@
     <groupId>org.jboss</groupId>
     <artifactId>jboss-parent</artifactId>
     <relativePath />
-    <version>36</version>
+    <version>38</version>
   </parent>
 
   <!-- Model Information -->
@@ -49,14 +49,14 @@
   </developers>
 
   <properties>
-    <version.arquillian_core>1.5.0.Final</version.arquillian_core>
-    <version.spock>1.3-groovy-2.5</version.spock>
+    <version.arquillian_core>1.7.0.Alpha9</version.arquillian_core>
+    <version.spock>2.0-groovy-3.0</version.spock>
     <version.shrinkwrap>1.2.6</version.shrinkwrap>
-    <version.groovy>2.5.8</version.groovy>
-    <version.assertj>3.13.2</version.assertj>
+    <version.groovy>3.0.8</version.groovy>
+    <version.assertj>3.19.0</version.assertj>
 
     <!-- overwrite parent -->
-    <version.compiler.plugin>3.8.0</version.compiler.plugin>
+    <version.compiler.plugin>3.8.1</version.compiler.plugin>
   </properties>
 
   <dependencyManagement>
@@ -104,9 +104,8 @@
 
       <dependency>
         <groupId>org.codehaus.groovy</groupId>
-        <artifactId>groovy-all</artifactId>
+        <artifactId>groovy</artifactId>
 		<version>${version.groovy}</version>
-		<type>pom</type>
       </dependency>
 
       <dependency>

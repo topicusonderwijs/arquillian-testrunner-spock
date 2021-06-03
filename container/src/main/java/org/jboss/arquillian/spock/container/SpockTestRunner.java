@@ -1,100 +1,97 @@
-/*
- * JBoss, Home of Professional Open Source
- * Copyright 2016 Red Hat Inc. and/or its affiliates and other contributors
- * as indicated by the @authors tag. All rights reserved.
- * See the copyright.txt in the distribution for a
- * full listing of individual contributors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jboss.arquillian.spock.container;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.arquillian.container.test.spi.TestRunner;
-import org.jboss.arquillian.spock.ArquillianSputnik;
+import org.jboss.arquillian.spock.ArquillianTestContext;
 import org.jboss.arquillian.test.spi.TestResult;
-import org.junit.runner.Result;
-import org.junit.runner.notification.RunListener;
-import org.junit.runner.notification.RunNotifier;
-import org.spockframework.runtime.Sputnik;
+import org.junit.platform.commons.JUnitException;
+import org.junit.platform.engine.FilterResult;
+import org.junit.platform.engine.TestExecutionResult;
+import org.junit.platform.engine.discovery.DiscoverySelectors;
+import org.junit.platform.launcher.Launcher;
+import org.junit.platform.launcher.LauncherDiscoveryRequest;
+import org.junit.platform.launcher.PostDiscoveryFilter;
+import org.junit.platform.launcher.TestExecutionListener;
+import org.junit.platform.launcher.TestIdentifier;
+import org.junit.platform.launcher.TestPlan;
+import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
+import org.junit.platform.launcher.core.LauncherFactory;
+import org.opentest4j.TestAbortedException;
+import org.spockframework.runtime.FeatureNode;
+import org.spockframework.runtime.model.FeatureInfo;
 
-import static org.jboss.arquillian.test.spi.TestResult.failed;
-
-/**
- * Spock TestRunner
- *
- * @author <a href="mailto:aslak@redhat.com">Aslak Knutsen</a>
- * @author <a href="mailto:bartosz.majsak@gmail.com">Bartosz Majsak</a>
- * @version $Revision: $
- */
 public class SpockTestRunner implements TestRunner {
 
-    /**
-     * Overwrite to provide additional run listeners.
-     */
-    protected List<RunListener> getRunListeners() {
-        return Collections.emptyList();
-    }
+	@Override
+	public TestResult execute(Class<?> testClass, String methodName) {
+		TestResult testResult;
+		ArquillianTestMethodExecutionListener listener = new ArquillianTestMethodExecutionListener();
+		ArquillianTestContext.setInArquillian(true);
+		try {
+			final AtomicInteger matchCounter = new AtomicInteger(0);
+			Launcher launcher = LauncherFactory.create();
+			launcher.registerTestExecutionListeners(listener);
+			LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
+					.selectors(DiscoverySelectors.selectClass(testClass)).filters((PostDiscoveryFilter) object -> {
+						System.out.println(object+" selecting "+methodName);
+						if (object instanceof FeatureNode) {
+							FeatureInfo feature = ((FeatureNode) object).getNodeInfo();
+							if (feature.getFeatureMethod().getReflection().getName().equals(methodName)) {
+								matchCounter.incrementAndGet();
+								return FilterResult.included("Matched method name");
+							}
+						}
+						return FilterResult.excluded("Not matched");
+					}).build();
+			TestPlan plan = launcher.discover(request);
 
-    /* (non-Javadoc)
-     * @see org.jboss.arquillian.spi.TestRunner#execute(java.lang.Class, java.lang.String)
-     */
-    @Override
-    public TestResult execute(final Class<?> testClass, final String methodName) {
+			if (matchCounter.get() > 1) {
+				throw new JUnitException("Method name must be unique");
+			}
+			if (plan.containsTests()) {
+				launcher.execute(request);
+				testResult = listener.getTestResult();
+			} else {
+				throw new JUnitException("No test method found");
+			}
+		} catch (Throwable t) {
+			testResult = TestResult.failed(t);
+		} finally {
+			ArquillianTestContext.clearInArquillian();
+		}
+		testResult.setEnd(System.currentTimeMillis());
+		return testResult;
+	}
 
-        final Result testResult = new Result();
+	private static class ArquillianTestMethodExecutionListener implements TestExecutionListener {
+		private TestResult result = TestResult.passed();
 
-        try {
-            final Sputnik spockRunner = new ArquillianSputnik(testClass, true);
-            spockRunner.filter(new SpockSpecificationFilter(spockRunner, methodName));
-            runTest(spockRunner, testResult);
-        } catch (Exception e) {
-            return failed(e);
-        }
+		public void executionSkipped(TestIdentifier testIdentifier, String reason) {
+			result = TestResult.skipped(reason);
+		}
 
-        return convertToTestResult(testResult);
-    }
+		public void executionFinished(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
+			TestExecutionResult.Status status = testExecutionResult.getStatus();
 
-    public void runTest(final Sputnik spockRunner, final Result testResult) {
-        final RunNotifier notifier = new RunNotifier();
-        notifier.addFirstListener(testResult.createListener());
+			if (!testIdentifier.isTest()) {
+				return;
+			}
+			switch (status) {
+			case FAILED:
+				result = TestResult.failed(testExecutionResult.getThrowable().orElseGet(() -> new Exception("Failed")));
+				break;
+			case ABORTED:
+				result = TestResult.failed(
+						testExecutionResult.getThrowable().orElseGet(() -> new TestAbortedException("Aborted")));
+				break;
+			case SUCCESSFUL:
+				break;
+			}
+		}
 
-        for (RunListener listener : getRunListeners()) {
-            notifier.addListener(listener);
-        }
-
-        spockRunner.run(notifier);
-    }
-
-    /**
-     * Convert a JUnit Result object to Arquillian TestResult
-     *
-     * @param result JUnit Test Run Result
-     * @return The TestResult representation of the JUnit Result
-     */
-    private TestResult convertToTestResult(Result result) {
-        TestResult newResult = TestResult.passed();
-        Throwable throwable = null;
-
-        if (result.getFailureCount() > 0) {
-            throwable = result.getFailures().get(0).getException();
-            newResult = TestResult.failed(throwable);
-        }
-
-        if (result.getIgnoreCount() > 0) {
-            newResult = TestResult.skipped(throwable);
-        }
-
-        return newResult;
-    }
+		private TestResult getTestResult() {
+			return result;
+		}
+	}
 }
