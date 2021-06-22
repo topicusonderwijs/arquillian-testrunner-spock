@@ -1,17 +1,50 @@
 package org.jboss.arquillian.spock;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.LinkedList;
+import java.util.List;
 
 import org.jboss.arquillian.spock.extension.RunModeEvent;
 import org.jboss.arquillian.test.spi.LifecycleMethodExecutor;
 import org.jboss.arquillian.test.spi.TestMethodExecutor;
 import org.jboss.arquillian.test.spi.TestResult;
+import org.spockframework.runtime.AbstractRunListener;
 import org.spockframework.runtime.extension.IAnnotationDrivenExtension;
 import org.spockframework.runtime.extension.IMethodInvocation;
+import org.spockframework.runtime.model.ErrorInfo;
 import org.spockframework.runtime.model.SpecInfo;
 
 public class RunWithArquillianExtension implements IAnnotationDrivenExtension<RunWithArquillian> {
+	private static class ErrorCollector extends AbstractRunListener {
+		private Throwable first = null;
+		private List<Throwable> errors = new LinkedList<>();
+
+		@Override
+		public void error(ErrorInfo error) {
+			if (first == null)
+				first = error.getException();
+			else
+				errors.add(error.getException());
+		}
+
+		public boolean isError() {
+			return first != null;
+		}
+
+		public void clear() {
+			first = null;
+			errors.clear();
+		}
+
+		public Throwable getFirst() {
+			return first;
+		}
+
+		public List<Throwable> getErrors() {
+			return errors;
+		}
+	}
+
 	@Override
 	public void visitSpecAnnotation(RunWithArquillian annotation, SpecInfo spec) {
 		if (!spec.getIsBottomSpec()) {
@@ -19,6 +52,9 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 		}
 
 		ArquillianTestContext testContext = new ArquillianTestContext();
+		ErrorCollector errors = new ErrorCollector();
+		spec.addListener(errors);
+
 		spec.addSetupSpecInterceptor(
 				c -> testContext.getAdaptor().beforeClass(spec.getReflection(), runIfNotInArquillian(testContext, c)));
 		spec.addSetupInterceptor(c -> testContext.getAdaptor().before(c.getInstance(),
@@ -36,10 +72,21 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 		});
 		spec.getAllFeatures().forEach(feature -> {
 			feature.addInterceptor(c -> {
-				if (ArquillianTestContext.isInArquillian()) {
+				if (ArquillianTestContext.isInArquillian() || isRunAsClient(testContext, c)) {
 					c.proceed();
 				} else {
-					TestResult result = interceptTestInvocation(testContext, c);
+					TestResult result = interceptTestInvocation(testContext, c, errors);
+					if (result.getThrowable() != null)
+						throw result.getThrowable();
+				}
+			});
+		});
+		spec.getAllFeatures().forEach(feature -> {
+			feature.getFeatureMethod().addInterceptor(c -> {
+				if (ArquillianTestContext.isInArquillian() || !isRunAsClient(testContext, c)) {
+					c.proceed();
+				} else {
+					TestResult result = interceptTestInvocation(testContext, c, errors);
 					if (result.getThrowable() != null)
 						throw result.getThrowable();
 				}
@@ -49,20 +96,23 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 
 	private LifecycleMethodExecutor runIfNotInArquillian(ArquillianTestContext testContext, IMethodInvocation c) {
 		return () -> {
-			if (!ArquillianTestContext.isInArquillian())
+			if (!ArquillianTestContext.isInArquillian()) {
 				c.proceed();
+			}
 		};
 	}
 
 	private LifecycleMethodExecutor runIfInArquillianOrClient(ArquillianTestContext testContext, IMethodInvocation c) {
 		return () -> {
-			if (ArquillianTestContext.isInArquillian() || isRunAsClient(testContext, c))
+			if (ArquillianTestContext.isInArquillian() || isRunAsClient(testContext, c)) {
 				c.proceed();
+			}
 		};
+
 	}
 
-	private TestResult interceptTestInvocation(ArquillianTestContext testContext, IMethodInvocation c)
-			throws Throwable {
+	private TestResult interceptTestInvocation(ArquillianTestContext testContext, IMethodInvocation c,
+			ErrorCollector errors) throws Throwable {
 		return testContext.getAdaptor().test(new TestMethodExecutor() {
 			@Override
 			public String getMethodName() {
@@ -80,11 +130,13 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 			}
 
 			@Override
-			public void invoke(Object... parameters) throws InvocationTargetException, IllegalAccessException {
-				try {
-					c.proceed();
-				} catch (Throwable t) {
-					throw new InvocationTargetException(t);
+			public void invoke(Object... parameters) throws Throwable {
+				errors.clear();
+				c.proceed();
+				if (errors.isError()) {
+					Throwable first = errors.getFirst();
+					errors.getErrors().forEach(first::addSuppressed);
+					throw first;
 				}
 			}
 		});
