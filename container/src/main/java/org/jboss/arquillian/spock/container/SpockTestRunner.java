@@ -37,6 +37,7 @@ public class SpockTestRunner implements TestRunner {
 						System.out.println(object+" selecting "+methodName);
 						if (object instanceof FeatureNode) {
 							FeatureInfo feature = ((FeatureNode) object).getNodeInfo();
+							System.out.println("checking "+feature.getFeatureMethod().getReflection().getName());
 							if (feature.getFeatureMethod().getReflection().getName().equals(methodName)) {
 								matchCounter.incrementAndGet();
 								return FilterResult.included("Matched method name");
@@ -46,6 +47,7 @@ public class SpockTestRunner implements TestRunner {
 					}).build();
 			TestPlan plan = launcher.discover(request);
 
+			System.out.println("Found "+matchCounter.get()+" matches");
 			if (matchCounter.get() > 1) {
 				throw new JUnitException("Method name must be unique");
 			}

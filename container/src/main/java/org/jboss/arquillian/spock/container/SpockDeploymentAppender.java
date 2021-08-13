@@ -17,13 +17,21 @@
  */
 package org.jboss.arquillian.spock.container;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.Collections;
+
 import org.jboss.arquillian.container.test.spi.TestRunner;
 import org.jboss.arquillian.container.test.spi.client.deployment.AuxiliaryArchiveAppender;
 import org.jboss.arquillian.spock.RunWithArquillianExtension;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.Filters;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
+import org.jboss.shrinkwrap.api.asset.ByteArrayAsset;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
+import org.jboss.shrinkwrap.impl.base.io.IOUtil;
 import org.junit.platform.engine.TestEngine;
 import org.spockframework.runtime.SpockEngine;
 
@@ -42,7 +50,7 @@ public class SpockDeploymentAppender implements AuxiliaryArchiveAppender {
 	 * org.jboss.arquillian.spi.AuxiliaryArchiveAppender#createAuxiliaryArchive()
 	 */
 	public Archive<?> createAuxiliaryArchive() {
-		return ShrinkWrap.create(JavaArchive.class, "arquillian-spock.jar")
+		JavaArchive ret = ShrinkWrap.create(JavaArchive.class, "arquillian-spock.jar")
 				.addPackages(true, Filters.exclude(".*/package-info.*"), "groovy", "groovyjarjarantlr",
 						"groovyjarjarasm.asm", "groovyjarjarcommonscli", "org.codehaus.groovy", "org.apache.groovy",
 						"spock", "org.spockframework", "org.opentest4j", "org.objectweb.asm")
@@ -51,10 +59,31 @@ public class SpockDeploymentAppender implements AuxiliaryArchiveAppender {
 				.addAsServiceProvider(TestRunner.class, SpockTestRunner.class)
 				.addAsServiceProvider(TestEngine.class, SpockEngine.class).addAsResource("dsld/spk.dsld")
 				.addAsResource("dsld/spk.dsld").addAsResource("org/spockframework/util/SpockReleaseInfo.properties")
-				.addAsResource("META-INF/services/org.codehaus.groovy.transform.ASTTransformation")
-				.addAsResource("META-INF/services/org.spockframework.runtime.extension.IGlobalExtension")
 				.addAsManifestResource("META-INF/dgminfo", "dgminfo")
 				.addAsManifestResource("META-INF/groovy-release-info.properties", "groovy-release-info.properties");
-//            .addAsServiceProvider(ScriptEngineFactory.class, GroovyScriptEngineFactory.class)
+		return addServiceFiles(ret, "org.codehaus.groovy.transform.ASTTransformation",
+				"org.codehaus.groovy.transform.ASTTransformation",
+				"org.spockframework.runtime.extension.IGlobalExtension", "spock.config.ConfigurationObject");
+	}
+
+	private JavaArchive addServiceFiles(JavaArchive archive, String... filenames) {
+		for (String filename : filenames)
+			archive.add(readServiceFile(filename), "META-INF/services/" + filename);
+		return archive;
+	}
+
+	private ByteArrayAsset readServiceFile(String filename) {
+		try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+
+			for (URL curFile : Collections
+					.list(getClass().getClassLoader().getResources("META-INF/services/" + filename))) {
+				try (InputStream in = curFile.openStream()) {
+					IOUtil.copy(in, output);
+				}
+			}
+			return new ByteArrayAsset(output.toByteArray());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
 	}
 }

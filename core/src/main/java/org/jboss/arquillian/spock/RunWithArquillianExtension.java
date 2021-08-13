@@ -45,13 +45,18 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 		}
 	}
 
+	private ArquillianTestContext testContext;
+	
+	public RunWithArquillianExtension(ArquillianTestContext testContext) {
+		this.testContext = testContext;
+	}
+
 	@Override
 	public void visitSpecAnnotation(RunWithArquillian annotation, SpecInfo spec) {
 		if (!spec.getIsBottomSpec()) {
 			return;
 		}
 
-		ArquillianTestContext testContext = new ArquillianTestContext();
 		ErrorCollector errors = new ErrorCollector();
 		spec.addListener(errors);
 
@@ -63,13 +68,6 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 				c.getFeature().getFeatureMethod().getReflection(), runIfInArquillianOrClient(testContext, c)));
 		spec.addCleanupSpecInterceptor(
 				c -> testContext.getAdaptor().afterClass(spec.getReflection(), runIfNotInArquillian(testContext, c)));
-		spec.addInterceptor(c -> {
-			try {
-				c.proceed();
-			} finally {
-				testContext.close();
-			}
-		});
 		spec.getAllFeatures().forEach(feature -> {
 			feature.addInterceptor(c -> {
 				if (ArquillianTestContext.isInArquillian() || isRunAsClient(testContext, c)) {

@@ -5,6 +5,9 @@ import java.io.Closeable;
 import org.jboss.arquillian.test.spi.TestRunnerAdaptor;
 import org.jboss.arquillian.test.spi.TestRunnerAdaptorBuilder;
 
+import spock.config.ConfigurationObject;
+
+@ConfigurationObject("arquilliancontext")
 public class ArquillianTestContext implements Closeable {
 	private TestRunnerAdaptor adaptor;
 
@@ -42,6 +45,7 @@ public class ArquillianTestContext implements Closeable {
 			if (adaptor != null) {
 				adaptor.afterSuite();
 				adaptor.shutdown();
+				adaptor = null;
 			}
 		} catch (Exception e) {
 			throw new RuntimeException("Could not run @AfterSuite", e);
