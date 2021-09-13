@@ -4,15 +4,18 @@ import org.junit.platform.launcher.LauncherSession;
 import org.junit.platform.launcher.LauncherSessionListener;
 
 public class ArquillianSetupAndTeardownSessionListener implements LauncherSessionListener {
-	private ArquillianTestContext context;
+	private static ArquillianTestContext context;
 
-	@Override
-	public void launcherSessionOpened(LauncherSession session) {
-		context = new ArquillianTestContext();
+	public static ArquillianTestContext getContext() {
+		if (context == null) {
+			context = new ArquillianTestContext();
+		}
+		return context;
 	}
 	
 	@Override
 	public void launcherSessionClosed(LauncherSession session) {
-		context.close();
+		if (context != null)
+			context.close();
 	}
 }

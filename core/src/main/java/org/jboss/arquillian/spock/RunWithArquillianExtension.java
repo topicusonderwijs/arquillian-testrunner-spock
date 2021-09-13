@@ -47,8 +47,8 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 
 	private ArquillianTestContext testContext;
 	
-	public RunWithArquillianExtension(ArquillianTestContext testContext) {
-		this.testContext = testContext;
+	public RunWithArquillianExtension() {
+		this.testContext = ArquillianSetupAndTeardownSessionListener.getContext();
 	}
 
 	@Override
