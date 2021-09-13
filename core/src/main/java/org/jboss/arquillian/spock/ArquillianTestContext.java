@@ -5,9 +5,6 @@ import java.io.Closeable;
 import org.jboss.arquillian.test.spi.TestRunnerAdaptor;
 import org.jboss.arquillian.test.spi.TestRunnerAdaptorBuilder;
 
-import spock.config.ConfigurationObject;
-
-@ConfigurationObject("arquilliancontext")
 public class ArquillianTestContext implements Closeable {
 	private TestRunnerAdaptor adaptor;
 
