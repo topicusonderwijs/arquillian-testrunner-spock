@@ -46,7 +46,7 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 	}
 
 	private ArquillianTestContext testContext;
-	
+
 	public RunWithArquillianExtension() {
 		this.testContext = ArquillianSetupAndTeardownSessionListener.getContext();
 	}
@@ -73,7 +73,7 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 				if (ArquillianTestContext.isInArquillian() || isRunAsClient(testContext, c)) {
 					c.proceed();
 				} else {
-					TestResult result = interceptTestInvocation(testContext, c, errors);
+					TestResult result = interceptTestInvocation(testContext, c, errors, true);
 					if (result.getThrowable() != null)
 						throw result.getThrowable();
 				}
@@ -84,7 +84,7 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 				if (ArquillianTestContext.isInArquillian() || !isRunAsClient(testContext, c)) {
 					c.proceed();
 				} else {
-					TestResult result = interceptTestInvocation(testContext, c, errors);
+					TestResult result = interceptTestInvocation(testContext, c, errors, false);
 					if (result.getThrowable() != null)
 						throw result.getThrowable();
 				}
@@ -106,38 +106,48 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 				c.proceed();
 			}
 		};
-
 	}
 
 	private TestResult interceptTestInvocation(ArquillianTestContext testContext, IMethodInvocation c,
-			ErrorCollector errors) throws Throwable {
-		return testContext.getAdaptor().test(new TestMethodExecutor() {
-			@Override
-			public String getMethodName() {
-				return c.getFeature().getFeatureMethod().getReflection().getName();
+			ErrorCollector errors, boolean triggerEvents) throws Throwable {
+		try {
+			if (triggerEvents) {
+				testContext.getAdaptor().before(c.getInstance(), c.getFeature().getFeatureMethod().getReflection(),
+						LifecycleMethodExecutor.NO_OP);
 			}
-
-			@Override
-			public Method getMethod() {
-				return c.getFeature().getFeatureMethod().getReflection();
-			}
-
-			@Override
-			public Object getInstance() {
-				return c.getInstance();
-			}
-
-			@Override
-			public void invoke(Object... parameters) throws Throwable {
-				errors.clear();
-				c.proceed();
-				if (errors.isError()) {
-					Throwable first = errors.getFirst();
-					errors.getErrors().forEach(first::addSuppressed);
-					throw first;
+			return testContext.getAdaptor().test(new TestMethodExecutor() {
+				@Override
+				public String getMethodName() {
+					return c.getFeature().getFeatureMethod().getReflection().getName();
 				}
+
+				@Override
+				public Method getMethod() {
+					return c.getFeature().getFeatureMethod().getReflection();
+				}
+
+				@Override
+				public Object getInstance() {
+					return c.getInstance();
+				}
+
+				@Override
+				public void invoke(Object... parameters) throws Throwable {
+					errors.clear();
+					c.proceed();
+					if (errors.isError()) {
+						Throwable first = errors.getFirst();
+						errors.getErrors().forEach(first::addSuppressed);
+						throw first;
+					}
+				}
+			});
+		} finally {
+			if (triggerEvents) {
+				testContext.getAdaptor().after(c.getInstance(), c.getFeature().getFeatureMethod().getReflection(),
+						LifecycleMethodExecutor.NO_OP);
 			}
-		});
+		}
 	}
 
 	private boolean isRunAsClient(ArquillianTestContext testContext, IMethodInvocation invocation) throws Exception {
