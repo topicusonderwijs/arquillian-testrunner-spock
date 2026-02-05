@@ -57,8 +57,7 @@ public class SpockDeploymentAppender implements AuxiliaryArchiveAppender {
 				.addPackages(true, "org.junit", "org.hamcrest")
 				.addPackages(true, RunWithArquillianExtension.class.getPackage().getName())
 				.addAsServiceProvider(TestRunner.class, SpockTestRunner.class)
-				.addAsServiceProvider(TestEngine.class, SpockEngine.class).addAsResource("dsld/spk.dsld")
-				.addAsResource("dsld/spk.dsld").addAsResource("org/spockframework/util/SpockReleaseInfo.properties")
+				.addAsServiceProvider(TestEngine.class, SpockEngine.class).addAsResource("org/spockframework/util/SpockReleaseInfo.properties")
 				.addAsManifestResource("META-INF/dgminfo", "dgminfo")
 				.addAsManifestResource("META-INF/groovy-release-info.properties", "groovy-release-info.properties");
 		return addServiceFiles(ret, "org.codehaus.groovy.transform.ASTTransformation",
