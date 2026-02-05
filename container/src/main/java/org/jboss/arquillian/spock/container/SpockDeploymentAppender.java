@@ -53,15 +53,17 @@ public class SpockDeploymentAppender implements AuxiliaryArchiveAppender {
 		JavaArchive ret = ShrinkWrap.create(JavaArchive.class, "arquillian-spock.jar")
 				.addPackages(true, Filters.exclude(".*/package-info.*"), "groovy", "groovyjarjarantlr4",
 						"groovyjarjarasm.asm", "groovyjarjarpicocli", "org.codehaus.groovy", "org.apache.groovy",
-						"spock", "org.spockframework", "org.opentest4j", "org.objectweb.asm")
-				.addPackages(true, "org.junit", "org.hamcrest")
+						"spock", "org.spockframework", "org.opentest4j")
+				.addPackages(true, "org.junit", "org.hamcrest").addPackages(true, "io.leangen.geantyref")
 				.addPackages(true, RunWithArquillianExtension.class.getPackage().getName())
 				.addAsServiceProvider(TestRunner.class, SpockTestRunner.class)
-				.addAsServiceProvider(TestEngine.class, SpockEngine.class).addAsResource("org/spockframework/util/SpockReleaseInfo.properties")
+				.addAsServiceProvider(TestEngine.class, SpockEngine.class)
+				.addAsResource("org/spockframework/util/SpockReleaseInfo.properties")
 				.addAsManifestResource("META-INF/dgminfo", "dgminfo")
 				.addAsManifestResource("META-INF/groovy-release-info.properties", "groovy-release-info.properties");
 		return addServiceFiles(ret, "org.codehaus.groovy.transform.ASTTransformation",
-				"org.spockframework.runtime.extension.IGlobalExtension", "spock.config.ConfigurationObject");
+				"org.spockframework.mock.runtime.IMockMaker", "org.spockframework.runtime.extension.IGlobalExtension",
+				"spock.config.ConfigurationObject");
 	}
 
 	private JavaArchive addServiceFiles(JavaArchive archive, String... filenames) {
