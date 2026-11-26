@@ -8,10 +8,18 @@ import org.jboss.arquillian.spock.extension.RunModeEvent;
 import org.jboss.arquillian.test.spi.LifecycleMethodExecutor;
 import org.jboss.arquillian.test.spi.TestMethodExecutor;
 import org.jboss.arquillian.test.spi.TestResult;
+import org.jboss.arquillian.test.spi.TestResult.Status;
+import org.opentest4j.TestAbortedException;
 import org.spockframework.runtime.AbstractRunListener;
 import org.spockframework.runtime.extension.IAnnotationDrivenExtension;
+import org.spockframework.runtime.extension.IDataDriver;
+import org.spockframework.runtime.extension.IMethodInterceptor;
 import org.spockframework.runtime.extension.IMethodInvocation;
 import org.spockframework.runtime.model.ErrorInfo;
+import org.spockframework.runtime.model.FeatureInfo;
+import org.spockframework.runtime.model.IterationInfo;
+import org.spockframework.runtime.model.MethodInfo;
+import org.spockframework.runtime.model.NameProvider;
 import org.spockframework.runtime.model.SpecInfo;
 
 public class RunWithArquillianExtension implements IAnnotationDrivenExtension<RunWithArquillian> {
@@ -74,8 +82,12 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 					c.proceed();
 				} else {
 					TestResult result = interceptTestInvocation(testContext, c, errors, true);
-					if (result.getThrowable() != null)
-						throw result.getThrowable();
+					Throwable throwable = result.getThrowable();
+					if (throwable instanceof IterationResults) {
+						reportIterations(c, (IterationResults) throwable);
+					} else if (throwable != null) {
+						throw throwable;
+					}
 				}
 			});
 		});
@@ -90,6 +102,64 @@ public class RunWithArquillianExtension implements IAnnotationDrivenExtension<Ru
 				}
 			});
 		});
+	}
+
+	/**
+	 * Lets Spock run the iterations the container executed once more on the
+	 * client, without data providers and without executing anything, so every
+	 * iteration is reported with its own name and outcome.
+	 */
+	private void reportIterations(IMethodInvocation c, IterationResults results) throws Throwable {
+		FeatureInfo feature = c.getFeature();
+		if (!feature.isReportIterations()) {
+			Throwable failure = results.toFailure();
+			if (failure != null)
+				throw failure;
+			return;
+		}
+
+		MethodInfo dataProcessor = feature.getDataProcessorMethod();
+		boolean forceParameterized = feature.isForceParameterized();
+		NameProvider<IterationInfo> nameProvider = feature.getIterationNameProvider();
+		IDataDriver dataDriver = feature.getDataDriver();
+		IMethodInterceptor replay = i -> replayIteration(results, i.getIteration().getIterationIndex());
+		try {
+			feature.setDataProcessorMethod(null);
+			feature.setForceParameterized(true);
+			feature.setIterationNameProvider(
+					iteration -> results.getIterations().get(iteration.getIterationIndex()).getDisplayName());
+			feature.setDataDriver((dataIterator, iterationRunner, parameters) -> {
+				int count = results.getIterations().size();
+				for (int i = 0; i < count; i++) {
+					iterationRunner.runIteration(new Object[parameters.size()], count);
+				}
+			});
+			// outermost, so setup, cleanup and the interceptors of other extensions stay in the container
+			feature.getIterationInterceptors().add(0, replay);
+			c.proceed();
+		} finally {
+			feature.getIterationInterceptors().remove(replay);
+			feature.setDataProcessorMethod(dataProcessor);
+			feature.setForceParameterized(forceParameterized);
+			feature.setIterationNameProvider(nameProvider);
+			feature.setDataDriver(dataDriver);
+		}
+
+		TestResult featureResult = results.getFeatureResult();
+		if (featureResult != null && featureResult.getStatus() == Status.FAILED
+				&& featureResult.getThrowable() != null) {
+			throw featureResult.getThrowable();
+		}
+	}
+
+	private void replayIteration(IterationResults results, int index) throws Throwable {
+		TestResult result = results.getIterations().get(index).getResult();
+		if (result.getStatus() == Status.SKIPPED) {
+			throw new TestAbortedException(result.getDescription());
+		}
+		if (result.getStatus() == Status.FAILED && result.getThrowable() != null) {
+			throw result.getThrowable();
+		}
 	}
 
 	private LifecycleMethodExecutor runIfNotInArquillian(ArquillianTestContext testContext, IMethodInvocation c) {

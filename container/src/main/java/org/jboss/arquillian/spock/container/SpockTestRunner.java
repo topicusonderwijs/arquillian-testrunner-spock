@@ -1,10 +1,14 @@
 package org.jboss.arquillian.spock.container;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.arquillian.container.test.spi.TestRunner;
 import org.jboss.arquillian.spock.ArquillianTestContext;
+import org.jboss.arquillian.spock.IterationResults;
 import org.jboss.arquillian.test.spi.TestResult;
+import org.jboss.arquillian.test.spi.TestResult.Status;
 import org.junit.platform.commons.JUnitException;
 import org.junit.platform.engine.FilterResult;
 import org.junit.platform.engine.TestExecutionResult;
@@ -64,33 +68,60 @@ public class SpockTestRunner implements TestRunner {
 	}
 
 	private static class ArquillianTestMethodExecutionListener implements TestExecutionListener {
+		private static final String ITERATION_SEGMENT = "iteration";
+
 		private TestResult result = TestResult.passed();
 
+		private final List<IterationResults.Iteration> iterations = new ArrayList<>();
+
 		public void executionSkipped(TestIdentifier testIdentifier, String reason) {
-			result = TestResult.skipped(reason);
+			if (isIteration(testIdentifier)) {
+				addIteration(testIdentifier, TestResult.skipped(reason));
+			} else {
+				result = TestResult.skipped(reason);
+			}
 		}
 
 		public void executionFinished(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
-			TestExecutionResult.Status status = testExecutionResult.getStatus();
-
 			if (!testIdentifier.isTest()) {
 				return;
 			}
-			switch (status) {
-			case FAILED:
-				result = TestResult.failed(testExecutionResult.getThrowable().orElseGet(() -> new Exception("Failed")));
-				break;
-			case ABORTED:
-				result = TestResult.failed(
-						testExecutionResult.getThrowable().orElseGet(() -> new TestAbortedException("Aborted")));
-				break;
-			case SUCCESSFUL:
-				break;
+			TestResult converted = convert(testExecutionResult);
+			if (isIteration(testIdentifier)) {
+				addIteration(testIdentifier, converted);
+			} else if (converted != null) {
+				result = converted;
 			}
 		}
 
+		private static TestResult convert(TestExecutionResult testExecutionResult) {
+			switch (testExecutionResult.getStatus()) {
+			case FAILED:
+				return TestResult.failed(testExecutionResult.getThrowable().orElseGet(() -> new Exception("Failed")));
+			case ABORTED:
+				return TestResult.failed(
+						testExecutionResult.getThrowable().orElseGet(() -> new TestAbortedException("Aborted")));
+			default:
+				return null;
+			}
+		}
+
+		private static boolean isIteration(TestIdentifier testIdentifier) {
+			return ITERATION_SEGMENT.equals(testIdentifier.getUniqueIdObject().getLastSegment().getType());
+		}
+
+		private void addIteration(TestIdentifier testIdentifier, TestResult iterationResult) {
+			int index = Integer.parseInt(testIdentifier.getUniqueIdObject().getLastSegment().getValue());
+			iterations.add(new IterationResults.Iteration(index, testIdentifier.getDisplayName(),
+					iterationResult == null ? TestResult.passed() : iterationResult));
+		}
+
 		private TestResult getTestResult() {
-			return result;
+			if (iterations.isEmpty()) {
+				return result;
+			}
+			IterationResults iterationResults = new IterationResults(iterations, result);
+			return new TestResult(iterationResults.isFailed() ? Status.FAILED : Status.PASSED, iterationResults);
 		}
 	}
 }
